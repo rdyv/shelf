@@ -26,12 +26,4 @@ clean: ## Clean build artifacts
 build: clean ## Build package
 	python3 -m build
 
-demo: ## Run demo
-	python3 shelf.py status
-
-standalone: ## Install to ~/bin/shelf
-	mkdir -p ~/bin
-	cp shelf.py ~/bin/shelf
-	chmod +x ~/bin/shelf
-
 .DEFAULT_GOAL := help

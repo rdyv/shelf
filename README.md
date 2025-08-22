@@ -21,7 +21,15 @@
 
 ---
 
-Shelf is a backup tool that gets out of your way. **One auditable Python file** ([shelf.py](shelf.py)) with zero dependencies backs up your dotfiles, configs, and system state to git-versioned storage. Auto-detects macOS/Linux and uses template ([macos.json](macos.json)) for configuration with structured NDJSON logging and Homebrew package backup.
+Shelf is a backup tool that is configurable and extensible. It backs up your dotfiles, config files, scripts, random directories etc to a git repository that you can upload to Github private remote.
+
+**One auditable Python file** ([shelf.py](shelf.py)) contains all the logic for backup and restore. It auto-detects OS (macOS/Linux) and uses correct template ([macos.json](macos.json) or [linux.json](linux.json)) for configuration. Each backup session creates detailed structured NDJSON logging for auditability. The following is an example of sources that are enabled for backup:
+
+- **Dotfiles**: `.zshrc`, `.gitconfig`, `.ssh/config`, etc.
+- **App Configs**: VSCode, Vim, tmux, git settings
+- **System Prefs**: macOS dock, finder, terminal settings
+- **Package Managers**: Homebrew formulas and casks
+- **Custom Fonts**: Your installed font collection
 
 ## Quick Start
 
@@ -29,26 +37,18 @@ Shelf is a backup tool that gets out of your way. **One auditable Python file** 
 # Install
 pip install shelf-backup
 
-# Initialize profile (auto-detects macOS/Linux)
+# Initialize profile
 shelf init
 
-# Backup to specific directory (path required for security)
+# Backup to specific directory
 shelf backup ~/my-backups
-
-# Restore from backup
-shelf restore
 
 # Optional: customize what gets backed up
 vim ~/.config/shelf/macos.json
+
+# Restore from backup
+shelf restore
 ```
-
-## What Gets Backed Up
-
-- **Dotfiles**: `.zshrc`, `.gitconfig`, `.ssh/config`, etc.
-- **App Configs**: VSCode, Vim, tmux, git settings
-- **System Prefs**: macOS dock, finder, terminal settings
-- **Package Managers**: Homebrew formulas and casks
-- **Custom Fonts**: Your installed font collection
 
 ## Documentation
 
