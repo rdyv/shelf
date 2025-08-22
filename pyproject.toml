@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shelf-backup"
+version = "0.1.1"
+description = "A stupidly simple backup tool: single file with zero dependencies"
+authors = [{ name = "Radhe" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Archiving :: Backup",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = []
+keywords = ["backup", "restore", "dotfiles", "git", "homebrew", "simple"]
+
+[project.optional-dependencies]
+dev = ["black>=23.0.0", "flake8>=6.0.0"]
+
+[project.scripts]
+shelf = "shelf:main"
+
+[project.urls]
+Homepage = "https://github.com/rdyv/shelf"
+Repository = "https://github.com/rdyv/shelf"
+Issues = "https://github.com/rdyv/shelf/issues"
+
+[tool.setuptools]
+py-modules = ["shelf"]
+
+[tool.setuptools.package-data]
+"*" = ["profiles/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.isort]
+profile = "black"
+line-length = 100
