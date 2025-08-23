@@ -388,7 +388,7 @@ class FilesProvider(BackupProvider):
 
         # Backup files
         for file_pattern in files:
-            src_path = self.home / file_pattern
+            src_path = Path(file_pattern).expanduser().resolve()
             if src_path.exists():
                 dest_path = backup_path / file_pattern
                 if self.file_manager.copy_item(src_path, dest_path):
@@ -402,7 +402,7 @@ class FilesProvider(BackupProvider):
 
         # Backup directories
         for dir_pattern in directories:
-            src_path = self.home / dir_pattern
+            src_path = Path(dir_pattern).expanduser().resolve()
             if src_path.exists():
                 dest_path = backup_path / dir_pattern
                 if self.file_manager.copy_item(src_path, dest_path):
@@ -437,7 +437,7 @@ class FilesProvider(BackupProvider):
         # Restore files
         for file_pattern in files:
             src_path = backup_path / file_pattern
-            dest_path = self.home / file_pattern
+            dest_path = Path(file_pattern).expanduser().resolve()
             if src_path.exists():
                 if self.file_manager.copy_item(src_path, dest_path):
                     self.logger.info(f"Restored file: {file_pattern}")
@@ -446,7 +446,7 @@ class FilesProvider(BackupProvider):
         # Restore directories
         for dir_pattern in directories:
             src_path = backup_path / dir_pattern
-            dest_path = self.home / dir_pattern
+            dest_path = Path(dir_pattern).expanduser().resolve()
             if src_path.exists():
                 if self.file_manager.copy_item(src_path, dest_path):
                     self.logger.info(f"Restored directory: {dir_pattern}")
