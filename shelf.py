@@ -683,7 +683,9 @@ class Shelf:
         backup_path.mkdir(parents=True, exist_ok=True)
 
         # Setup structured logger for this backup session
-        log_file = backup_path / f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ndjson"
+        logs_dir = backup_path / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        log_file = logs_dir / f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ndjson"
         self.logger = Logger(log_file)
 
         # Log metadata as first line
@@ -802,8 +804,9 @@ class Shelf:
             self.logger.info(f"No backups found at: {backup_path}")
             return
 
-        # Find all backup log files
-        log_files = sorted(backup_path.glob("backup_*.ndjson"), reverse=True)
+        # Find all backup log files in logs subdirectory
+        logs_dir = backup_path / "logs"
+        log_files = sorted(logs_dir.glob("backup_*.ndjson"), reverse=True) if logs_dir.exists() else []
 
         if not log_files:
             self.logger.info("No backup history found")
