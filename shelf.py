@@ -23,6 +23,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record):
         log_entry = {
+            "v": 1,
             "timestamp": datetime.fromtimestamp(record.created).isoformat(),
             "session_id": self.session_id,
             "type": "event",
@@ -110,6 +111,7 @@ class Logger:
     def log_metadata(self, operation: str, profile: str, **kwargs):
         """Log session metadata"""
         metadata = {
+            "v": 1,
             "timestamp": datetime.now().isoformat(),
             "session_id": self.session_id,
             "type": "metadata",
