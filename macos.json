@@ -115,7 +115,6 @@
     "commit_message_template": "Backup: {timestamp}",
     "branch": "main"
   },
-  "backup_path": "../shelf-data",
   "enabled_providers": [
     "files",
     "homebrew",

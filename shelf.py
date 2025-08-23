@@ -667,6 +667,11 @@ class Shelf:
         # Determine backup path - require explicit path
         if target_path:
             backup_path = Path(target_path).resolve()
+            # Save backup_path to profile when first provided via command line
+            if "backup_path" not in profile:
+                profile["backup_path"] = str(backup_path)
+                self.save_profile(profile)
+                self.logger.info(f"Saved backup path to profile: {backup_path}")
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
