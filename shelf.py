@@ -11,7 +11,7 @@ import logging
 import stat
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 
 
 class JSONFormatter(logging.Formatter):
@@ -79,7 +79,8 @@ class ColoredConsoleHandler(logging.StreamHandler):
             color = self.COLORS.get(record.levelname, "")
             reset = self.COLORS["RESET"]
             timestamp = datetime.now().strftime("%H:%M:%S")
-            print(f"{color}[{timestamp}] {record.levelname}: {record.getMessage()}{reset}")
+            message = f"{color}[{timestamp}] {record.levelname}: {record.getMessage()}{reset}"
+            print(message)
         except Exception:
             self.handleError(record)
 
@@ -382,7 +383,6 @@ class FilesProvider(BackupProvider):
 
         files = config.get("files", [])
         directories = config.get("directories", [])
-        exclude_patterns = config.get("exclude_patterns", [])
 
         stats = {"files": 0, "dirs": 0, "errors": 0, "total_size": 0}
 
@@ -626,7 +626,7 @@ class Shelf:
 
         if not template_file.exists():
             self.logger.error(f"Template file not found: {template_file}")
-            self.logger.error(f"Required template files: macos.json or linux.json")
+            self.logger.error("Required template files: macos.json or linux.json")
             raise FileNotFoundError(f"Template file required: {template_file}")
 
         try:
@@ -676,9 +676,8 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error(
-                "No backup path specified. Use shelf backup <path> or set 'backup_path' in profile config."
-            )
+            msg = "No backup path specified. Use shelf backup <path> or set 'backup_path' in profile config."
+            self.logger.error(msg)
             raise ValueError("Backup path required")
 
         self.logger.info(f"Backup target: {backup_path}")
@@ -748,9 +747,8 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error(
-                "No backup path specified. Use shelf restore <commit> <path> or set 'backup_path' in profile config."
-            )
+            msg = "No backup path specified. Use shelf restore <commit> <path> or set 'backup_path' in profile config."
+            self.logger.error(msg)
             raise ValueError("Backup path required")
 
         if not backup_path.exists():
@@ -797,9 +795,8 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error(
-                "No backup path specified. Use shelf list <path> or set 'backup_path' in profile config."
-            )
+            msg = "No backup path specified. Use shelf list <path> or set 'backup_path' in profile config."
+            self.logger.error(msg)
             return
 
         if not backup_path.exists():
@@ -835,7 +832,7 @@ class Shelf:
                             try:
                                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                                 formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-                            except:
+                            except ValueError:
                                 formatted_time = timestamp
 
                             print(f"{session_id} - {operation} - {formatted_time}")
@@ -865,7 +862,7 @@ class Shelf:
             git_manager = GitManager(backup_path, self.logger)
             recent_commits = git_manager.log(5)
             if recent_commits:
-                print(f"Recent backups:")
+                print("Recent backups:")
                 for line in recent_commits.strip().split("\n"):
                     print(f"  {line}")
             else:
@@ -889,9 +886,9 @@ class Shelf:
 
         # Show what will be backed up
         print(f"\n{profile['description']}")
-        print(
-            f"Files: {', '.join(profile['files']['files'][:5])}{'...' if len(profile['files']['files']) > 5 else ''}"
-        )
+        files_preview = ", ".join(profile["files"]["files"][:5])
+        files_suffix = "..." if len(profile["files"]["files"]) > 5 else ""
+        print(f"Files: {files_preview}{files_suffix}")
         print(f"Directories: {', '.join(profile['files']['directories'])}")
         if profile["homebrew"]["enabled"]:
             print("Homebrew: enabled")
