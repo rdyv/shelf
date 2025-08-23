@@ -6,7 +6,8 @@ help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
 
 install: ## Install shelf command
-	pip install -e .
+	python3 -m venv venv
+	. venv/bin/activate && pip3 install -e .
 
 test: ## Test basic functionality
 	python3 shelf.py status
