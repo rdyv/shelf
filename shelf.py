@@ -159,9 +159,7 @@ class GitManager:
         """Run git command"""
         cmd = ["git"] + args
         try:
-            result = subprocess.run(
-                cmd, cwd=self.repo_path, capture_output=True, text=True, check=True
-            )
+            result = subprocess.run(cmd, cwd=self.repo_path, capture_output=True, text=True, check=True)
             return result
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Git command failed: {' '.join(cmd)}")
@@ -415,9 +413,7 @@ class FilesProvider(BackupProvider):
                 self.logger.warn(f"Directory not found: {dir_pattern}")
 
         # Backup succeeds if 80%+ of items copied successfully
-        success_rate = (stats["files"] + stats["dirs"]) / max(
-            1, stats["files"] + stats["dirs"] + stats["errors"]
-        )
+        success_rate = (stats["files"] + stats["dirs"]) / max(1, stats["files"] + stats["dirs"] + stats["errors"])
         is_successful = success_rate >= 0.8
 
         return {
@@ -473,18 +469,14 @@ class HomebrewProvider(BackupProvider):
 
         try:
             # Generate Brewfile
-            SystemUtils.run_command(
-                ["brew", "bundle", "dump", "--force", "--file", str(backup_path / "Brewfile")]
-            )
+            SystemUtils.run_command(["brew", "bundle", "dump", "--force", "--file", str(backup_path / "Brewfile")])
             stats["brewfile"] = True
             self.logger.info("Generated Brewfile")
 
             # Export lists
             result = SystemUtils.run_command(["brew", "list", "--formula"])
             (backup_path / "brew-formulas.txt").write_text(result.stdout)
-            stats["formulas"] = (
-                len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
-            )
+            stats["formulas"] = len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
 
             result = SystemUtils.run_command(["brew", "list", "--cask"])
             (backup_path / "brew-casks.txt").write_text(result.stdout)
@@ -922,10 +914,7 @@ def main():
 
             if len(sys.argv) > 2:
                 # Check if arg looks like commit hash
-                if (
-                    len(sys.argv[2]) >= 8
-                    and sys.argv[2].replace("_", "").replace("-", "").isalnum()
-                ):
+                if len(sys.argv[2]) >= 8 and sys.argv[2].replace("_", "").replace("-", "").isalnum():
                     commit = sys.argv[2]
                     path = sys.argv[3] if len(sys.argv) > 3 else None
                 else:

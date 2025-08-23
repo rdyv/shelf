@@ -20,7 +20,7 @@ lint: ## Run linters
 	fi
 	@if command -v flake8 >/dev/null 2>&1; then \
 		echo "Running flake8 lint check..."; \
-		flake8 shelf.py --max-line-length=100 --ignore=E203,W503; \
+		flake8 shelf.py; \
 	else \
 		echo "flake8 not found, skipping lint check"; \
 	fi

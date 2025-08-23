@@ -45,9 +45,9 @@ py-modules = ["shelf"]
 "*" = ["profiles/*.json"]
 
 [tool.black]
-line-length = 100
+line-length = 150
 target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
 
 [tool.isort]
 profile = "black"
-line-length = 100
+line-length = 150
