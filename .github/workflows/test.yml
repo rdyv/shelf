@@ -16,6 +16,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install linting dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install black flake8
+
+      - name: Check code formatting
+        run: make format
+
+      - name: Run linting
+        run: make lint
+
       - name: Test basic functionality
         run: |
           python3 -c "import shelf; print('✓ Import works')"
