@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
 
 
-
 class JSONFormatter(logging.Formatter):
     """Custom formatter for JSON logging"""
 
@@ -29,16 +28,35 @@ class JSONFormatter(logging.Formatter):
             "type": "event",
             "level": record.levelname,
             "message": record.getMessage(),
-            "event_type": getattr(record, 'event_type', 'general')
+            "event_type": getattr(record, "event_type", "general"),
         }
 
         # Add extra fields
         for key, value in record.__dict__.items():
-            if key not in ('name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
-                          'filename', 'module', 'lineno', 'funcName', 'created',
-                          'msecs', 'relativeCreated', 'thread', 'threadName',
-                          'processName', 'process', 'getMessage', 'exc_info',
-                          'exc_text', 'stack_info', 'event_type'):
+            if key not in (
+                "name",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "getMessage",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "event_type",
+            ):
                 log_entry[key] = value
 
         return json.dumps(log_entry)
@@ -48,18 +66,18 @@ class ColoredConsoleHandler(logging.StreamHandler):
     """Console handler with colors"""
 
     COLORS = {
-        'DEBUG': '\033[36m',
-        'INFO': '\033[32m',
-        'WARNING': '\033[33m',
-        'ERROR': '\033[31m',
-        'CRITICAL': '\033[31m',
-        'RESET': '\033[0m'
+        "DEBUG": "\033[36m",
+        "INFO": "\033[32m",
+        "WARNING": "\033[33m",
+        "ERROR": "\033[31m",
+        "CRITICAL": "\033[31m",
+        "RESET": "\033[0m",
     }
 
     def emit(self, record):
         try:
-            color = self.COLORS.get(record.levelname, '')
-            reset = self.COLORS['RESET']
+            color = self.COLORS.get(record.levelname, "")
+            reset = self.COLORS["RESET"]
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"{color}[{timestamp}] {record.levelname}: {record.getMessage()}{reset}")
         except Exception:
@@ -98,15 +116,15 @@ class Logger:
             "profile": profile,
             "platform": platform.system().lower(),
             "hostname": platform.node(),
-            **kwargs
+            **kwargs,
         }
 
         # Write metadata directly to file (first line)
         if self.logger.handlers:
             for handler in self.logger.handlers:
                 if isinstance(handler, logging.FileHandler):
-                    with open(handler.baseFilename, 'a') as f:
-                        f.write(json.dumps(metadata) + '\n')
+                    with open(handler.baseFilename, "a") as f:
+                        f.write(json.dumps(metadata) + "\n")
 
     def info(self, message: str, event_type: str = "general", **kwargs):
         extra = {"event_type": event_type, **kwargs}
@@ -233,6 +251,7 @@ class FileManager:
 
     def _copy_directory_safe(self, src: Path, dest: Path):
         """Copy directory, skipping socket files"""
+
         def ignore_problematic_files(src_dir, names):
             """Skip socket files and other problematic items"""
             ignored = []
@@ -396,7 +415,9 @@ class FilesProvider(BackupProvider):
                 self.logger.warn(f"Directory not found: {dir_pattern}")
 
         # Backup succeeds if 80%+ of items copied successfully
-        success_rate = (stats["files"] + stats["dirs"]) / max(1, stats["files"] + stats["dirs"] + stats["errors"])
+        success_rate = (stats["files"] + stats["dirs"]) / max(
+            1, stats["files"] + stats["dirs"] + stats["errors"]
+        )
         is_successful = success_rate >= 0.8
 
         return {
@@ -404,7 +425,7 @@ class FilesProvider(BackupProvider):
             "success": is_successful,
             "stats": stats,
             "total_size_formatted": self.file_manager.format_size(stats["total_size"]),
-            "success_rate": f"{success_rate:.1%}"
+            "success_rate": f"{success_rate:.1%}",
         }
 
     def restore(self, backup_path: Path, config: Dict[str, Any]) -> bool:
@@ -452,20 +473,22 @@ class HomebrewProvider(BackupProvider):
 
         try:
             # Generate Brewfile
-            SystemUtils.run_command([
-                "brew", "bundle", "dump", "--force", "--file", str(backup_path / "Brewfile")
-            ])
+            SystemUtils.run_command(
+                ["brew", "bundle", "dump", "--force", "--file", str(backup_path / "Brewfile")]
+            )
             stats["brewfile"] = True
             self.logger.info("Generated Brewfile")
 
             # Export lists
             result = SystemUtils.run_command(["brew", "list", "--formula"])
             (backup_path / "brew-formulas.txt").write_text(result.stdout)
-            stats["formulas"] = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+            stats["formulas"] = (
+                len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
+            )
 
             result = SystemUtils.run_command(["brew", "list", "--cask"])
             (backup_path / "brew-casks.txt").write_text(result.stdout)
-            stats["casks"] = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+            stats["casks"] = len(result.stdout.strip().split("\n")) if result.stdout.strip() else 0
 
             result = SystemUtils.run_command(["brew", "services", "list"])
             (backup_path / "brew-services.txt").write_text(result.stdout)
@@ -520,7 +543,7 @@ class FontsProvider(BackupProvider):
         stats = {"fonts": 0}
         font_list = []
 
-        font_extensions = {'.ttf', '.otf', '.woff', '.woff2', '.eot'}
+        font_extensions = {".ttf", ".otf", ".woff", ".woff2", ".eot"}
 
         for font_file in self.fonts_dir.rglob("*"):
             if font_file.is_file() and font_file.suffix.lower() in font_extensions:
@@ -528,7 +551,7 @@ class FontsProvider(BackupProvider):
                 stats["fonts"] += 1
 
         if font_list:
-            (backup_path / "custom-fonts.txt").write_text('\n'.join(sorted(font_list)))
+            (backup_path / "custom-fonts.txt").write_text("\n".join(sorted(font_list)))
             self.logger.info(f"Listed {stats['fonts']} custom fonts")
 
         return {"provider": self.name, "success": True, "stats": stats}
@@ -537,7 +560,7 @@ class FontsProvider(BackupProvider):
         # Fonts restore is typically just informational
         fonts_list = backup_path / "custom-fonts.txt"
         if fonts_list.exists():
-            font_count = len(fonts_list.read_text().strip().split('\n'))
+            font_count = len(fonts_list.read_text().strip().split("\n"))
             self.logger.info(f"Font list available: {font_count} fonts (manual restore required)")
         return True
 
@@ -569,7 +592,7 @@ class Shelf:
         self.providers = {
             "files": FilesProvider(self.logger, self.file_manager),
             "homebrew": HomebrewProvider(self.logger, self.file_manager),
-            "fonts": FontsProvider(self.logger, self.file_manager)
+            "fonts": FontsProvider(self.logger, self.file_manager),
         }
 
     def _get_cached_profile_name(self) -> str:
@@ -620,7 +643,6 @@ class Shelf:
         self.logger.info(f"Created profile: {self.profile_name}")
         return profile
 
-
     def load_profile(self, name: str) -> Dict[str, Any]:
         """Load profile from JSON config file"""
         profile_path = self.config_dir / f"{name}.json"
@@ -654,7 +676,9 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error("No backup path specified. Use shelf backup <path> or set 'backup_path' in profile config.")
+            self.logger.error(
+                "No backup path specified. Use shelf backup <path> or set 'backup_path' in profile config."
+            )
             raise ValueError("Backup path required")
 
         self.logger.info(f"Backup target: {backup_path}")
@@ -679,7 +703,7 @@ class Shelf:
             "profile": self.profile_name,
             "success": True,
             "providers": {},
-            "log_file": str(log_file)
+            "log_file": str(log_file),
         }
 
         # Execute each provider
@@ -724,7 +748,9 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error("No backup path specified. Use shelf restore <commit> <path> or set 'backup_path' in profile config.")
+            self.logger.error(
+                "No backup path specified. Use shelf restore <commit> <path> or set 'backup_path' in profile config."
+            )
             raise ValueError("Backup path required")
 
         if not backup_path.exists():
@@ -771,7 +797,9 @@ class Shelf:
         elif "backup_path" in profile:
             backup_path = Path(profile["backup_path"]).expanduser().resolve()
         else:
-            self.logger.error("No backup path specified. Use shelf list <path> or set 'backup_path' in profile config.")
+            self.logger.error(
+                "No backup path specified. Use shelf list <path> or set 'backup_path' in profile config."
+            )
             return
 
         if not backup_path.exists():
@@ -794,7 +822,7 @@ class Shelf:
                 break
 
             try:
-                with open(log_file, 'r') as f:
+                with open(log_file, "r") as f:
                     first_line = f.readline().strip()
                     if first_line:
                         metadata = json.loads(first_line)
@@ -805,7 +833,7 @@ class Shelf:
 
                             # Parse timestamp for display
                             try:
-                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                                 formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
                             except:
                                 formatted_time = timestamp
@@ -838,7 +866,7 @@ class Shelf:
             recent_commits = git_manager.log(5)
             if recent_commits:
                 print(f"Recent backups:")
-                for line in recent_commits.strip().split('\n'):
+                for line in recent_commits.strip().split("\n"):
                     print(f"  {line}")
             else:
                 print("No backup history")
@@ -861,11 +889,13 @@ class Shelf:
 
         # Show what will be backed up
         print(f"\n{profile['description']}")
-        print(f"Files: {', '.join(profile['files']['files'][:5])}{'...' if len(profile['files']['files']) > 5 else ''}")
+        print(
+            f"Files: {', '.join(profile['files']['files'][:5])}{'...' if len(profile['files']['files']) > 5 else ''}"
+        )
         print(f"Directories: {', '.join(profile['files']['directories'])}")
-        if profile['homebrew']['enabled']:
+        if profile["homebrew"]["enabled"]:
             print("Homebrew: enabled")
-        if profile['fonts']['enabled']:
+        if profile["fonts"]["enabled"]:
             print("Fonts: enabled")
 
 
@@ -895,7 +925,10 @@ def main():
 
             if len(sys.argv) > 2:
                 # Check if arg looks like commit hash
-                if len(sys.argv[2]) >= 8 and sys.argv[2].replace('_', '').replace('-', '').isalnum():
+                if (
+                    len(sys.argv[2]) >= 8
+                    and sys.argv[2].replace("_", "").replace("-", "").isalnum()
+                ):
                     commit = sys.argv[2]
                     path = sys.argv[3] if len(sys.argv) > 3 else None
                 else:
