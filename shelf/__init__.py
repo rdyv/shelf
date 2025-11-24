@@ -612,13 +612,10 @@ class Shelf:
     def __init__(self):
         self.home = Path.home()
         self.config_dir = self.home / CONFIG_DIR
-        self.backup_dir = self.home / BACKUP_DIR
         self.os_name = SystemUtils.get_platform()
-        self.profile_name = self._get_cached_profile_name()
+        self.profile_name = self.os_name
 
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
-        self._cache_profile_name(self.profile_name)
 
         self.logger = Logger()
         self.file_manager = FileManager(self.logger)
@@ -656,27 +653,6 @@ class Shelf:
                 result[key] = value
 
         return result
-
-    def _get_cached_profile_name(self) -> str:
-        cache_file = self.backup_dir / PROFILE_CACHE_FILE
-
-        if cache_file.exists():
-            try:
-                cached_name = cache_file.read_text().strip()
-                if cached_name:
-                    return cached_name
-            except Exception:
-                pass
-
-        # Default to OS name
-        return self.os_name
-
-    def _cache_profile_name(self, profile_name: str):
-        cache_file = self.backup_dir / PROFILE_CACHE_FILE
-        try:
-            cache_file.write_text(profile_name)
-        except Exception:
-            pass
 
     def _prompt_for_backup_path(self) -> str:
         """Prompt user for backup location path on first run"""
@@ -825,8 +801,18 @@ class Shelf:
 
         self.logger.info(f"Backup target: {backup_path}")
         backup_path.mkdir(parents=True, exist_ok=True)
-        (backup_path / "logs").mkdir(exist_ok=True)
-        log_file = backup_path / "logs" / datetime.now().strftime(LOG_FILE_FORMAT)
+        (backup_path / ".shelf_logs").mkdir(exist_ok=True)
+
+        # Ensure .shelf_logs is gitignored
+        gitignore_path = backup_path / ".gitignore"
+        if gitignore_path.exists():
+            gitignore_content = gitignore_path.read_text()
+            if ".shelf_logs" not in gitignore_content and ".shelf_logs/" not in gitignore_content:
+                gitignore_path.write_text(gitignore_content.rstrip() + "\n.shelf_logs/\n")
+        else:
+            gitignore_path.write_text(".shelf_logs/\n")
+
+        log_file = backup_path / ".shelf_logs" / datetime.now().strftime(LOG_FILE_FORMAT)
         self.logger = Logger(log_file)
 
         self.file_manager = FileManager(
@@ -858,12 +844,16 @@ class Shelf:
             provider_config = profile.get("providers", {}).get(provider_name, {})
             if provider_config and isinstance(provider_config, dict):
                 self.logger.info(f"Running {provider_name} backup...")
-                result = provider.backup(provider_config, backup_path)
+
+                # Get provider-specific subdirectory (default to empty string for root)
+                provider_subdirectory = provider_config.get("subdirectory", "")
+                provider_backup_path = backup_path / provider_subdirectory if provider_subdirectory else backup_path
+                provider_backup_path.mkdir(parents=True, exist_ok=True)
+
+                result = provider.backup(provider_config, provider_backup_path)
                 providers_results[provider_name] = result
                 if not result.get("success", False) and not result.get("skipped", False):
                     results["success"] = False
-
-        (backup_path / BACKUP_METADATA_FILE).write_text(json.dumps(results, indent=2))
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         message = git_manager.commit_message_template.format(timestamp=timestamp, date=timestamp.split()[0], time=timestamp.split()[1])
@@ -917,9 +907,13 @@ class Shelf:
         for provider_name, provider in self.providers.items():
             provider_config = profile.get("providers", {}).get(provider_name, {})
             if provider_config and provider_config.get("enabled", True):
+                # Get provider-specific subdirectory (default to empty string for root)
+                provider_subdirectory = provider_config.get("subdirectory", "")
+                provider_backup_path = backup_path / provider_subdirectory if provider_subdirectory else backup_path
+
                 if dry_run:
                     print(f"ℹ️  Would restore {provider_name}")
-                elif not provider.restore(backup_path, provider_config):
+                elif not provider.restore(provider_backup_path, provider_config):
                     success = False
 
         if dry_run:
@@ -969,7 +963,6 @@ class Shelf:
         print("=" * 50)
 
         print(f"Config directory: {self.config_dir}")
-        print(f"Application data directory: {self.backup_dir}")
         print(f"Platform: {SystemUtils.get_platform()}")
         print(f"Profile: {self.profile_name} (auto-detected)")
 

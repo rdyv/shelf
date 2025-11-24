@@ -46,6 +46,9 @@ branch = "main"
 [providers.files]
 enabled = true
 
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/linux"
+
 # Paths to backup (files and directories - auto-detected)
 paths = [
     ".profile",
@@ -74,11 +77,17 @@ paths = [
 [providers.homebrew]
 enabled = false
 
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/linux"
+
 # ============================================================================
 # Provider: Fonts
 # ============================================================================
 [providers.fonts]
 enabled = true
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/linux"
 
 # Only backup custom fonts (not system fonts)
 custom_fonts_only = true

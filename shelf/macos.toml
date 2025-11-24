@@ -46,6 +46,9 @@ branch = "main"
 [providers.files]
 enabled = true
 
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/macos"
+
 # Paths to backup (files and directories - auto-detected)
 paths = [
     "~/.zshrc",
@@ -100,6 +103,9 @@ paths = [
 [providers.homebrew]
 enabled = true
 
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/macos"
+
 # Generate Brewfile
 brewfile = true
 
@@ -120,6 +126,9 @@ taps = true
 # ============================================================================
 [providers.fonts]
 enabled = true
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/macos"
 
 # Only backup custom fonts (not system fonts)
 custom_fonts_only = true
