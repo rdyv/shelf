@@ -678,6 +678,28 @@ class Shelf:
         except Exception:
             pass
 
+    def _prompt_for_backup_path(self) -> str:
+        """Prompt user for backup location path on first run"""
+        print("\nPlease specify the backup repository path (The directory will be created if it doesn't exist).")
+
+        while True:
+            backup_path = input("\n> ").strip()
+
+            if not backup_path:
+                print("Error: Backup path cannot be empty. Please provide a valid path.")
+                continue
+
+            expanded_path = Path(backup_path).expanduser().resolve()
+
+            # Confirm with user
+            print(f"\nBackup repository will be: {expanded_path}")
+            confirm = input("Is this correct? (y/n): ").strip().lower()
+
+            if confirm in ('y', 'yes'):
+                return str(expanded_path)
+            else:
+                print("Let's try again.")
+
     def _create_profile_from_template(self) -> Dict[str, Any]:
         script_dir = Path(__file__).parent
         template_file = script_dir / f"{self.profile_name}.toml"
@@ -698,6 +720,15 @@ class Shelf:
 
         self.save_profile(profile)
         self.logger.info(f"Created profile: {self.profile_name}")
+
+        # Prompt for backup path on first run
+        backup_path = self._prompt_for_backup_path()
+        profile["backup"]["path"] = backup_path
+        self.save_profile(profile)
+        self.logger.info(f"Saved backup path to profile: {backup_path}")
+        print(f"\nBackup path configured: {backup_path}")
+        print("You can change this later by editing the config file.\n")
+
         return profile
 
     def _load_template(self) -> Dict[str, Any]:
@@ -938,30 +969,40 @@ class Shelf:
         print("=" * 50)
 
         print(f"Config directory: {self.config_dir}")
-        print(f"Backup directory: {self.backup_dir}")
+        print(f"Application data directory: {self.backup_dir}")
         print(f"Platform: {SystemUtils.get_platform()}")
         print(f"Profile: {self.profile_name} (auto-detected)")
 
         # Profile-specific info
-        profile_path = self.config_dir / f"{self.profile_name}.json"
-        backup_path = self.backup_dir / self.profile_name
+        profile_path = self.config_dir / f"{self.profile_name}.toml"
 
         print(f"\nCurrent Profile: {self.profile_name}")
         print(f"Config: {profile_path}")
         print(f"Exists: {'Yes' if profile_path.exists() else 'No'}")
 
-        if backup_path.exists():
+        if profile_path.exists():
             profile = self.load_profile(self.profile_name)
-            git_manager = GitManager(backup_path, self.logger, profile.get("git", {}))
-            recent_commits = git_manager.log(5)
-            if recent_commits:
-                print("Recent backups:")
-                for line in recent_commits.strip().split("\n"):
-                    print(f"  {line}")
+            configured_backup_path = profile.get("backup", {}).get("path")
+
+            if configured_backup_path:
+                print(f"Backup path (git repo): {configured_backup_path}")
+                backup_path = Path(configured_backup_path).expanduser().resolve()
+
+                if backup_path.exists():
+                    git_manager = GitManager(backup_path, self.logger, profile.get("git", {}))
+                    recent_commits = git_manager.log(5)
+                    if recent_commits:
+                        print("Recent backups:")
+                        for line in recent_commits.strip().split("\n"):
+                            print(f"  {line}")
+                    else:
+                        print("No backup history")
+                else:
+                    print("Backup repository not yet created")
             else:
-                print("No backup history")
+                print("Backup path not configured yet")
         else:
-            print("No backups yet")
+            print("Run any shelf command to initialize configuration")
 
 
 def main():
