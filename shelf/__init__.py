@@ -454,7 +454,14 @@ class FilesProvider(BackupProvider):
                 self.logger.warn(f"Path not found: {path_pattern}")
                 continue
 
-            dest_path = backup_path / path_pattern
+            # Create relative path from home directory for cleaner backup structure
+            try:
+                relative_path = src_path.relative_to(self.home)
+                dest_path = backup_path / relative_path
+            except ValueError:
+                # If path is not relative to home (e.g., /etc/hosts), use full absolute path
+                dest_path = backup_path / str(src_path).lstrip('/')
+
             if self.file_manager.copy_item(src_path, dest_path):
                 if src_path.is_file():
                     stats["files"] += 1
@@ -505,8 +512,16 @@ class FilesProvider(BackupProvider):
 
         restored = 0
         for path_pattern in config.get("paths", []):
-            src_path = backup_path / path_pattern
             dest_path = Path(path_pattern).expanduser().resolve()
+
+            # Find source path using relative path from home
+            try:
+                relative_path = dest_path.relative_to(self.home)
+                src_path = backup_path / relative_path
+            except ValueError:
+                # If path is not relative to home, use full absolute path
+                src_path = backup_path / str(dest_path).lstrip('/')
+
             if src_path.exists() and self.file_manager.copy_item(src_path, dest_path):
                 item_type = "file" if src_path.is_file() else "directory"
                 self.logger.info(f"Restored {item_type}: {path_pattern}")
