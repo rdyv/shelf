@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shelf-backup"
-version = "0.2.1"
+version = "0.2.2"
 description = "A stupidly simple backup tool: single file with zero dependencies"
 authors = [{ name = "Radhe" }]
 readme = "README.md"
@@ -37,8 +37,11 @@ Repository = "https://github.com/rdyv/shelf"
 Issues = "https://github.com/rdyv/shelf/issues"
 
 [tool.setuptools]
-py-modules = ["shelf"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shelf"]
 
 [tool.setuptools.package-data]
 shelf = ["*.toml"]

@@ -10,25 +10,25 @@ install: ## Install shelf command
 	. venv/bin/activate && pip3 install -e .
 
 test: ## Test basic functionality
-	python3 shelf.py status
+	python3 -m shelf status
 
 lint: ## Run ruff linter
 	@echo "Running ruff lint check..."
-	@ruff check shelf.py
+	@ruff check shelf/
 
 format: ## Check code formatting (fails if issues found)
 	@echo "Checking code formatting..."
-	@ruff format --check shelf.py || (echo "Code formatting issues found. Run 'make format-fix' to fix." && exit 1)
+	@ruff format --check shelf/ || (echo "Code formatting issues found. Run 'make format-fix' to fix." && exit 1)
 
 format-fix: ## Apply code formatting
 	@echo "Applying code formatting..."
-	@ruff format shelf.py
+	@ruff format shelf/
 	@echo "Applying lint fixes..."
-	@ruff check --fix shelf.py
+	@ruff check --fix shelf/
 
 typecheck: ## Run type checker
 	@echo "Running pyrefly type check..."
-	@pyrefly check shelf.py
+	@pyrefly check shelf/
 
 check: format lint typecheck ## Run all checks (format, lint, typecheck)
 

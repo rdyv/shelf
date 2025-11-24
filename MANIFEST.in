@@ -1,2 +1,2 @@
-include macos.toml
-include linux.toml
+include shelf/macos.toml
+include shelf/linux.toml
