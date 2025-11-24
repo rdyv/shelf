@@ -963,44 +963,10 @@ class Shelf:
         else:
             print("No backups yet")
 
-    def init_profile(self):
-        profile_path = self.config_dir / f"{self.profile_name}.toml"
-
-        if profile_path.exists():
-            self.logger.info(f"Profile '{self.profile_name}' already exists")
-            self.logger.info(f"Edit: {profile_path}")
-            return
-
-        # Create profile from template
-        profile = self._create_profile_from_template()
-
-        self.logger.info(f"Configuration: {profile_path}")
-
-        # Show what will be backed up
-        description = profile.get("description", f"{self.profile_name} backup configuration")
-        print(f"\n{description}")
-
-        files_config = profile.get("providers", {}).get("files", {})
-        paths_list = files_config.get("paths", [])
-
-        if paths_list:
-            paths_preview = ", ".join(paths_list[:5])
-            paths_suffix = "..." if len(paths_list) > 5 else ""
-            print(f"Paths: {paths_preview}{paths_suffix}")
-
-        homebrew_config = profile.get("providers", {}).get("homebrew", {})
-        if homebrew_config.get("enabled"):
-            print("Homebrew: enabled")
-
-        fonts_config = profile.get("providers", {}).get("fonts", {})
-        if fonts_config.get("enabled"):
-            print("Fonts: enabled")
-
 
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  shelf init                           # Initialize profile")
         print("  shelf backup <path> [--push]         # Backup to path")
         print("  shelf restore [commit] [path] [--dry-run] # Restore from path")
         print("  shelf list [path]                    # List backups at path")
@@ -1049,9 +1015,6 @@ def main():
         elif command == "list":
             path = sys.argv[2] if len(sys.argv) > 2 else None
             shelf.list_backups(path)
-
-        elif command == "init":
-            shelf.init_profile()
 
         elif command == "status":
             shelf.status()
