@@ -11,6 +11,7 @@ import fnmatch
 import logging
 import stat
 import hashlib
+import getpass
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -631,6 +632,119 @@ class FontsProvider(BackupProvider):
         return True
 
 
+class PasswordsProvider(BackupProvider):
+    """Provider for managing passwords encrypted with GPG"""
+
+    def __init__(self, logger: Logger, file_manager: FileManager):
+        super().__init__("passwords", logger, file_manager)
+
+    def _run_gpg(self, args: List[str], input_data: Optional[str] = None) -> subprocess.CompletedProcess:
+        """Run GPG command"""
+        try:
+            return subprocess.run(
+                ["gpg"] + args,
+                input=input_data,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"GPG command failed: {' '.join(args)}")
+            if e.stderr:
+                self.logger.error(f"GPG error: {e.stderr.strip()}")
+            raise
+
+    def _get_password_file(self, store_path: Path, name: str) -> Path:
+        """Get the file path for a password entry"""
+        # Sanitize name to create safe filename
+        safe_name = "".join(c if c.isalnum() or c in ".-_" else "_" for c in name)
+        return store_path / f"{safe_name}.gpg"
+
+    def add(self, store_path: Path, gpg_key_id: str, name: str, password: str) -> bool:
+        """Add or update a password"""
+        try:
+            password_file = self._get_password_file(store_path, name)
+            self._run_gpg(
+                ["-e", "-r", gpg_key_id, "-o", str(password_file), "--batch", "--yes"],
+                input_data=password,
+            )
+            self.logger.info(f"Password stored: {name}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to store password: {e}")
+            return False
+
+    def show(self, store_path: Path, name: str) -> Optional[str]:
+        """Decrypt and show a password"""
+        try:
+            password_file = self._get_password_file(store_path, name)
+            if not password_file.exists():
+                self.logger.error(f"Password not found: {name}")
+                return None
+
+            result = self._run_gpg(["-d", str(password_file)])
+            return result.stdout.strip()
+        except Exception as e:
+            self.logger.error(f"Failed to decrypt password: {e}")
+            return None
+
+    def remove(self, store_path: Path, name: str) -> bool:
+        """Remove a password"""
+        try:
+            password_file = self._get_password_file(store_path, name)
+            if not password_file.exists():
+                self.logger.error(f"Password not found: {name}")
+                return False
+
+            password_file.unlink()
+            self.logger.info(f"Password removed: {name}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to remove password: {e}")
+            return False
+
+    def rename(self, store_path: Path, old_name: str, new_name: str) -> bool:
+        """Rename a password"""
+        try:
+            old_file = self._get_password_file(store_path, old_name)
+            if not old_file.exists():
+                self.logger.error(f"Password not found: {old_name}")
+                return False
+
+            new_file = self._get_password_file(store_path, new_name)
+            if new_file.exists():
+                self.logger.error(f"Password already exists: {new_name}")
+                return False
+
+            old_file.rename(new_file)
+            self.logger.info(f"Password renamed: {old_name} -> {new_name}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to rename password: {e}")
+            return False
+
+    def list_passwords(self, store_path: Path) -> List[str]:
+        """List all stored passwords"""
+        try:
+            passwords = []
+            for file in store_path.glob("*.gpg"):
+                # Remove .gpg extension
+                name = file.stem
+                passwords.append(name)
+            return sorted(passwords)
+        except Exception as e:
+            self.logger.error(f"Failed to list passwords: {e}")
+            return []
+
+    def backup(self, config: Dict[str, Any], backup_path: Path) -> Dict[str, Any]:
+        """Passwords are already in the backup location, nothing to do"""
+        return {"provider": self.name, "success": True, "skipped": True}
+
+    def restore(self, backup_path: Path, config: Dict[str, Any]) -> bool:
+        """Passwords are already in the backup location, nothing to restore"""
+        return True
+
+
 class Shelf:
     def __init__(self):
         self.home = Path.home()
@@ -794,13 +908,17 @@ class Shelf:
             if isinstance(value, dict):
                 tables[key] = value
             elif isinstance(value, bool):
-                lines.append(f"{key} = {str(value).lower()}")
+                quoted_key = f'"{key}"' if any(c in key for c in ["/", "~", " ", "."]) else key
+                lines.append(f"{quoted_key} = {str(value).lower()}")
             elif isinstance(value, (int, float)):
-                lines.append(f"{key} = {value}")
+                quoted_key = f'"{key}"' if any(c in key for c in ["/", "~", " ", "."]) else key
+                lines.append(f"{quoted_key} = {value}")
             elif isinstance(value, str):
-                lines.append(f'{key} = "{value}"')
+                quoted_key = f'"{key}"' if any(c in key for c in ["/", "~", " ", "."]) else key
+                lines.append(f'{quoted_key} = "{value}"')
             elif isinstance(value, list):
-                lines.append(f"{key} = {json.dumps(value)}")
+                quoted_key = f'"{key}"' if any(c in key for c in ["/", "~", " ", "."]) else key
+                lines.append(f"{quoted_key} = {json.dumps(value)}")
         result = "\n".join(lines)
         for name, data in tables.items():
             result += f"\n\n[{prefix}{name}]\n" if result else f"[{prefix}{name}]\n"
@@ -1035,6 +1153,13 @@ def main():
         print("  shelf restore [commit] [path] [--dry-run] # Restore from path")
         print("  shelf list [path]                        # List backups at path")
         print("  shelf status                             # Show system status")
+        print("  shelf pass <action> [name]               # Manage passwords")
+        print()
+        print("Password actions:")
+        print("  list         List all stored passwords")
+        print("  add <name>   Add or update a password")
+        print("  show <name>  Show a password")
+        print("  rm <name>    Remove a password")
         print()
         print("Options:")
         print("  --commit    Create git commit after backup")
@@ -1086,6 +1211,134 @@ def main():
 
         elif command == "status":
             shelf.status()
+
+        elif command == "pass":
+            if len(sys.argv) < 3:
+                print("Usage: shelf pass <action> [name]")
+                print("Actions: list, add, show, rm, rename")
+                sys.exit(1)
+
+            action = sys.argv[2].lower()
+            profile = shelf.load_profile(shelf.profile_name)
+
+            # Get password provider configuration
+            pass_config = profile.get("providers", {}).get("passwords", {})
+
+            # Auto-enable and configure if not set
+            if not pass_config.get("enabled", False) or not pass_config.get("gpg_key_id"):
+                print("\nPassword provider not configured.")
+                print("Available GPG keys:")
+                try:
+                    result = subprocess.run(
+                        ["gpg", "--list-keys", "--keyid-format", "LONG"],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                    print(result.stdout)
+                except subprocess.CalledProcessError:
+                    print("Error: Could not list GPG keys. Is GPG installed?")
+                    sys.exit(1)
+
+                gpg_key_id = input("\nEnter GPG key ID to use for password encryption: ").strip()
+                if not gpg_key_id:
+                    print("Error: GPG key ID cannot be empty")
+                    sys.exit(1)
+
+                # Update config
+                if "providers" not in profile:
+                    profile["providers"] = {}
+                if "passwords" not in profile["providers"]:
+                    profile["providers"]["passwords"] = {}
+
+                profile["providers"]["passwords"]["enabled"] = True
+                profile["providers"]["passwords"]["gpg_key_id"] = gpg_key_id
+                if "subdirectory" not in profile["providers"]["passwords"]:
+                    profile["providers"]["passwords"]["subdirectory"] = "passwords"
+
+                # Save updated config
+                shelf.save_profile(profile)
+                print(f"Password provider enabled with GPG key: {gpg_key_id}")
+                pass_config = profile["providers"]["passwords"]
+
+            gpg_key_id = pass_config.get("gpg_key_id")
+
+            backup_path_str = profile.get("backup", {}).get("path")
+            if not backup_path_str:
+                print("Error: Backup path not configured. Run 'shelf backup <path>' first.")
+                sys.exit(1)
+
+            backup_path = Path(backup_path_str).expanduser().resolve()
+            subdirectory = pass_config.get("subdirectory", "passwords")
+            store_path = backup_path / subdirectory
+            store_path.mkdir(parents=True, exist_ok=True)
+
+            pass_provider = PasswordsProvider(shelf.logger, shelf.file_manager)
+
+            if action == "list":
+                passwords = pass_provider.list_passwords(store_path)
+                if passwords:
+                    print("Stored passwords:")
+                    for name in passwords:
+                        print(f"  {name}")
+                else:
+                    print("No passwords stored")
+
+            elif action == "add":
+                if len(sys.argv) < 4:
+                    print("Usage: shelf pass add <name>")
+                    sys.exit(1)
+                name = sys.argv[3]
+                password = getpass.getpass("Enter password: ")
+                if not password:
+                    print("Password cannot be empty")
+                    sys.exit(1)
+                confirm = getpass.getpass("Confirm password: ")
+                if password != confirm:
+                    print("Passwords do not match")
+                    sys.exit(1)
+                if pass_provider.add(store_path, gpg_key_id, name, password):
+                    print(f"Password stored: {name}")
+                else:
+                    print("Failed to store password")
+                    sys.exit(1)
+
+            elif action == "show":
+                if len(sys.argv) < 4:
+                    print("Usage: shelf pass show <name>")
+                    sys.exit(1)
+                name = sys.argv[3]
+                password = pass_provider.show(store_path, name)
+                if password:
+                    print(password)
+                else:
+                    sys.exit(1)
+
+            elif action == "rm":
+                if len(sys.argv) < 4:
+                    print("Usage: shelf pass rm <name>")
+                    sys.exit(1)
+                name = sys.argv[3]
+                if pass_provider.remove(store_path, name):
+                    print(f"Password removed: {name}")
+                else:
+                    sys.exit(1)
+
+            elif action == "rename":
+                if len(sys.argv) < 5:
+                    print("Usage: shelf pass rename <old_name> <new_name>")
+                    sys.exit(1)
+                old_name = sys.argv[3]
+                new_name = sys.argv[4]
+                if pass_provider.rename(store_path, old_name, new_name):
+                    print(f"Password renamed: {old_name} -> {new_name}")
+                else:
+                    sys.exit(1)
+
+            else:
+                print(f"Unknown action: {action}")
+                print("Available actions: list, add, show, rm, rename")
+                sys.exit(1)
 
         else:
             print(f"Unknown command: {command}")

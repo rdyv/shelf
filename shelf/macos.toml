@@ -130,3 +130,16 @@ custom_fonts_only = true
 
 # Backup system fonts too (may be large)
 system_fonts = false
+
+# ============================================================================
+# Provider: Passwords (GPG-encrypted)
+# ============================================================================
+[providers.passwords]
+enabled = false
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "passwords"
+
+# GPG key ID for password encryption (required for 'shelf pass' commands)
+# Get your key ID with: gpg --list-keys
+gpg_key_id = ""
