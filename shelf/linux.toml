@@ -28,13 +28,8 @@ ignore_patterns = [
 # Enable git versioning
 enabled = true
 
-# Automatically commit after backup
-auto_commit = true
-
-# Automatically push to remote after commit
-auto_push = false
-
 # Commit message template (supports: {timestamp}, {date}, {time})
+# Use --commit flag to create commits, --push to push to remote
 commit_message = "Backup: {timestamp}"
 
 # Branch to use

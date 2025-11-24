@@ -217,6 +217,14 @@ class GitManager:
         except subprocess.CalledProcessError:
             return False
 
+    def has_remote(self) -> bool:
+        """Check if git repository has a remote configured"""
+        try:
+            result = self.run_git(["remote", "-v"])
+            return bool(result.stdout.strip())
+        except subprocess.CalledProcessError:
+            return False
+
 
 class FileManager:
     def __init__(self, logger: Logger, ignore_patterns: Optional[List[str]] = None):
@@ -784,7 +792,7 @@ class Shelf:
             result += self._dict_to_toml(data, f"{prefix}{name}.")
         return result
 
-    def backup(self, target_path: Optional[str] = None, auto_push: bool = False) -> Dict[str, Any]:
+    def backup(self, target_path: Optional[str] = None, should_commit: bool = False, should_push: bool = False) -> Dict[str, Any]:
         profile = self.load_profile(self.profile_name)
 
         if target_path:
@@ -855,18 +863,25 @@ class Shelf:
                 if not result.get("success", False) and not result.get("skipped", False):
                     results["success"] = False
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message = git_manager.commit_message_template.format(timestamp=timestamp, date=timestamp.split()[0], time=timestamp.split()[1])
+        if should_commit:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            message = git_manager.commit_message_template.format(timestamp=timestamp, date=timestamp.split()[0], time=timestamp.split()[1])
 
-        git_manager.add_all()
-        if git_manager.commit(message):
-            results["git_commit"] = git_manager.get_current_commit()[:8]
-            self.logger.info(f"Git commit: {results['git_commit']}")
-            if auto_push or git_manager.auto_push:
-                results["git_push"] = "success" if git_manager.push() else "failed"
-                self.logger.info("Pushed to remote" if results["git_push"] == "success" else "Failed to push")
+            git_manager.add_all()
+            if git_manager.commit(message):
+                results["git_commit"] = git_manager.get_current_commit()[:8]
+                self.logger.info(f"Git commit: {results['git_commit']}")
+
+                if should_push:
+                    if git_manager.has_remote():
+                        results["git_push"] = "success" if git_manager.push() else "failed"
+                        self.logger.info("Pushed to remote" if results["git_push"] == "success" else "Failed to push")
+                    else:
+                        self.logger.warn("--push specified but no remote configured")
+            else:
+                self.logger.info("No changes to commit")
         else:
-            self.logger.info("No changes to commit")
+            self.logger.info("Backup completed (use --commit to create git commit)")
 
         self.logger.info("Backup completed successfully" if results["success"] else "Backup completed with errors")
         return results
@@ -1001,13 +1016,14 @@ class Shelf:
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  shelf backup <path> [--push]         # Backup to path")
+        print("  shelf backup <path> [--commit] [--push]  # Backup to path")
         print("  shelf restore [commit] [path] [--dry-run] # Restore from path")
-        print("  shelf list [path]                    # List backups at path")
-        print("  shelf status                         # Show system status")
+        print("  shelf list [path]                        # List backups at path")
+        print("  shelf status                             # Show system status")
         print()
         print("Options:")
-        print("  --push      Push changes to git remote after backup")
+        print("  --commit    Create git commit after backup")
+        print("  --push      Push changes to remote (requires --commit and configured remote)")
         print("  --dry-run   Show what would be restored without making changes")
         print()
         print("Backup path must be specified explicitly or set in profile config.")
@@ -1019,15 +1035,18 @@ def main():
     try:
         if command == "backup":
             path = None
-            auto_push = False
+            should_commit = False
+            should_push = False
 
             for arg in sys.argv[2:]:
-                if arg == "--push":
-                    auto_push = True
+                if arg == "--commit":
+                    should_commit = True
+                elif arg == "--push":
+                    should_push = True
                 elif not arg.startswith("--"):
                     path = arg
 
-            shelf.backup(path, auto_push=auto_push)
+            shelf.backup(path, should_commit=should_commit, should_push=should_push)
 
         elif command == "restore":
             commit = None
