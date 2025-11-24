@@ -1,6 +1,6 @@
 # Makefile for Shelf
 
-.PHONY: help install test lint format format-fix clean build
+.PHONY: help install test lint format format-fix typecheck check clean build
 
 help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-15s %s\n", $$1, $$2}'
@@ -12,37 +12,25 @@ install: ## Install shelf command
 test: ## Test basic functionality
 	python3 shelf.py status
 
-lint: ## Run linters
-	@if command -v black >/dev/null 2>&1; then \
-		echo "Running black format check..."; \
-		black --check shelf.py; \
-	else \
-		echo "black not found, skipping format check"; \
-	fi
-	@if command -v flake8 >/dev/null 2>&1; then \
-		echo "Running flake8 lint check..."; \
-		flake8 shelf.py; \
-	else \
-		echo "flake8 not found, skipping lint check"; \
-	fi
+lint: ## Run ruff linter
+	@echo "Running ruff lint check..."
+	@ruff check shelf.py
 
 format: ## Check code formatting (fails if issues found)
-	@if command -v black >/dev/null 2>&1; then \
-		echo "Checking code formatting..."; \
-		black --check shelf.py || (echo "Code formatting issues found. Run 'make format-fix' to fix." && exit 1); \
-	else \
-		echo "black not found, cannot check formatting"; \
-		exit 1; \
-	fi
+	@echo "Checking code formatting..."
+	@ruff format --check shelf.py || (echo "Code formatting issues found. Run 'make format-fix' to fix." && exit 1)
 
 format-fix: ## Apply code formatting
-	@if command -v black >/dev/null 2>&1; then \
-		echo "Applying code formatting..."; \
-		black shelf.py; \
-	else \
-		echo "black not found, cannot format code"; \
-		exit 1; \
-	fi
+	@echo "Applying code formatting..."
+	@ruff format shelf.py
+	@echo "Applying lint fixes..."
+	@ruff check --fix shelf.py
+
+typecheck: ## Run type checker
+	@echo "Running pyrefly type check..."
+	@pyrefly check shelf.py
+
+check: format lint typecheck ## Run all checks (format, lint, typecheck)
 
 clean: ## Clean build artifacts
 	rm -rf build/ dist/ *.egg-info/
