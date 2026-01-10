@@ -8,7 +8,15 @@ install:
 	. venv/bin/activate && pip3 install -e .
 
 test:
-	python3 -m shelf status
+	@echo "Running unit tests..."
+	@python3 -m unittest discover -s tests -v
+
+test-quick:
+	@python3 -m unittest discover -s tests -q
+
+smoke-test:
+	@echo "Running smoke test..."
+	@python3 -m shelf status
 
 lint:
 	@echo "Running ruff lint check..."

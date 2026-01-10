@@ -16,12 +16,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+__version__ = "0.4.0"
+
 # Configuration
 CONFIG_DIR = ".config/shelf"
 BACKUP_DIR = ".local/share/shelf"
-PROFILE_CACHE_FILE = ".profile_cache"
-BACKUP_METADATA_FILE = ".backup_metadata.json"
-GPG_ID_FILE = ".gpg-id"
 
 # Logging configuration
 LOG_VERSION = 1
@@ -34,6 +33,13 @@ FONT_EXTENSIONS = {".ttf", ".otf", ".woff", ".woff2", ".eot"}
 FONT_LIST_FILE = "custom-fonts.txt"
 MACOS_FONTS_DIR = "Library/Fonts"
 LINUX_FONTS_DIR = ".fonts"
+
+# Subprocess configuration
+DEFAULT_SUBPROCESS_TIMEOUT = 60  # seconds
+
+# Backup configuration
+BACKUP_SUCCESS_THRESHOLD = 0.8  # 80% success rate considered acceptable
+DEFAULT_BACKUP_LIST_LIMIT = 20  # default number of backups to show in list
 
 
 class JSONFormatter(logging.Formatter):
@@ -157,7 +163,7 @@ class GitManager:
         self.auto_commit = config.get("auto_commit", True)
         self.auto_push = config.get("auto_push", False)
 
-    def run_git(self, args: List[str]) -> subprocess.CompletedProcess:
+    def run_git(self, args: List[str], timeout: int = DEFAULT_SUBPROCESS_TIMEOUT) -> subprocess.CompletedProcess:
         try:
             return subprocess.run(
                 ["git"] + args,
@@ -165,7 +171,11 @@ class GitManager:
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=timeout,
             )
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"Git command timed out after {timeout}s: {' '.join(args)}")
+            raise
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Git command failed: {' '.join(args)}")
             if e.stderr:
@@ -337,83 +347,8 @@ class SystemUtils:
         return shutil.which(command) is not None
 
     @staticmethod
-    def run_command(cmd: List[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)
-
-
-class PasswordStore:
-    def __init__(self, store_dir: Path, logger: Logger):
-        self.store_dir = store_dir
-        self.logger = logger
-
-    def init_store(self, gpg_key_id: str) -> bool:
-        try:
-            self.store_dir.mkdir(parents=True, exist_ok=True)
-            (self.store_dir / GPG_ID_FILE).write_text(gpg_key_id + "\n")
-            self.logger.info(f"Password store initialized with key: {gpg_key_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to initialize password store: {e}")
-            return False
-
-    def store_password(self, name: str, password: str) -> bool:
-        try:
-            gpg_id_file = self.store_dir / GPG_ID_FILE
-            if not gpg_id_file.exists():
-                self.logger.error("Password store not initialized")
-                return False
-
-            password_file = self.store_dir / f"{name}.gpg"
-            password_file.parent.mkdir(parents=True, exist_ok=True)
-
-            process = subprocess.Popen(
-                [
-                    "gpg",
-                    "--encrypt",
-                    "--armor",
-                    "--recipient",
-                    gpg_id_file.read_text().strip(),
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            stdout, stderr = process.communicate(input=password)
-
-            if process.returncode == 0:
-                password_file.write_text(stdout)
-                return True
-            self.logger.error(f"GPG encryption failed: {stderr}")
-            return False
-        except Exception as e:
-            self.logger.error(f"Failed to store password {name}: {e}")
-            return False
-
-    def get_password(self, name: str) -> Optional[str]:
-        try:
-            password_file = self.store_dir / f"{name}.gpg"
-            if not password_file.exists():
-                return None
-            result = subprocess.run(
-                ["gpg", "--decrypt", "--quiet", str(password_file)],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.strip() if result.returncode == 0 else None
-        except Exception as e:
-            self.logger.error(f"Failed to retrieve password {name}: {e}")
-            return None
-
-    def list_passwords(self) -> List[str]:
-        try:
-            if not self.store_dir.exists():
-                return []
-            return sorted(str(f.relative_to(self.store_dir)).replace(".gpg", "") for f in self.store_dir.rglob("*.gpg"))
-        except Exception as e:
-            self.logger.error(f"Failed to list passwords: {e}")
-            return []
+    def run_command(cmd: List[str], cwd: Optional[Path] = None, timeout: int = DEFAULT_SUBPROCESS_TIMEOUT) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True, timeout=timeout)
 
 
 class BackupProvider:
@@ -461,7 +396,7 @@ class FilesProvider(BackupProvider):
                 dest_path = backup_path / relative_path
             except ValueError:
                 # If path is not relative to home (e.g., /etc/hosts), use full absolute path
-                dest_path = backup_path / str(src_path).lstrip('/')
+                dest_path = backup_path / str(src_path).lstrip("/")
 
             if self.file_manager.copy_item(src_path, dest_path):
                 if src_path.is_file():
@@ -501,7 +436,7 @@ class FilesProvider(BackupProvider):
 
         return {
             "provider": self.name,
-            "success": success_rate >= 0.8,
+            "success": success_rate >= BACKUP_SUCCESS_THRESHOLD,
             "stats": stats,
             "total_size_formatted": self.file_manager.format_size(stats["total_size"]),
             "success_rate": f"{success_rate:.1%}",
@@ -521,7 +456,7 @@ class FilesProvider(BackupProvider):
                 src_path = backup_path / relative_path
             except ValueError:
                 # If path is not relative to home, use full absolute path
-                src_path = backup_path / str(dest_path).lstrip('/')
+                src_path = backup_path / str(dest_path).lstrip("/")
 
             if src_path.exists() and self.file_manager.copy_item(src_path, dest_path):
                 item_type = "file" if src_path.is_file() else "directory"
@@ -638,7 +573,7 @@ class PasswordsProvider(BackupProvider):
     def __init__(self, logger: Logger, file_manager: FileManager):
         super().__init__("passwords", logger, file_manager)
 
-    def _run_gpg(self, args: List[str], input_data: Optional[str] = None) -> subprocess.CompletedProcess:
+    def _run_gpg(self, args: List[str], input_data: Optional[str] = None, timeout: int = DEFAULT_SUBPROCESS_TIMEOUT) -> subprocess.CompletedProcess:
         """Run GPG command"""
         try:
             return subprocess.run(
@@ -647,7 +582,11 @@ class PasswordsProvider(BackupProvider):
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=timeout,
             )
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"GPG command timed out after {timeout}s")
+            raise
         except subprocess.CalledProcessError as e:
             self.logger.error(f"GPG command failed: {' '.join(args)}")
             if e.stderr:
@@ -660,15 +599,28 @@ class PasswordsProvider(BackupProvider):
         safe_name = "".join(c if c.isalnum() or c in ".-_" else "_" for c in name)
         return store_path / f"{safe_name}.gpg"
 
-    def add(self, store_path: Path, gpg_key_id: str, name: str, password: str) -> bool:
+    def add(self, store_path: Path, gpg_key_id: str, name: str, password: str, force: bool = False) -> bool:
         """Add or update a password"""
         try:
             password_file = self._get_password_file(store_path, name)
+
+            # Check for potential name collision from sanitization
+            safe_name = password_file.stem
+            if safe_name != name and not force:
+                # Name was sanitized, check if this would overwrite existing entry
+                if password_file.exists():
+                    self.logger.warn(f"Name '{name}' sanitized to '{safe_name}' which already exists")
+                    self.logger.error("Use a different name or remove the existing entry first")
+                    return False
+
             self._run_gpg(
                 ["-e", "-r", gpg_key_id, "-o", str(password_file), "--batch", "--yes"],
                 input_data=password,
             )
-            self.logger.info(f"Password stored: {name}")
+            if safe_name != name:
+                self.logger.info(f"Password stored: {name} (as {safe_name})")
+            else:
+                self.logger.info(f"Password stored: {name}")
             return True
         except Exception as e:
             self.logger.error(f"Failed to store password: {e}")
@@ -791,6 +743,26 @@ class Shelf:
 
         return result
 
+    def _validate_backup_path(self, path: Path) -> Optional[str]:
+        """Validate backup path and return error message if invalid, None if valid"""
+        path_str = str(path)
+
+        # Reject root directory
+        if path == Path("/"):
+            return "Cannot use root directory as backup path"
+
+        # Reject system directories
+        forbidden_prefixes = ["/System", "/usr", "/bin", "/sbin", "/var", "/etc", "/lib", "/opt"]
+        for prefix in forbidden_prefixes:
+            if path_str.startswith(prefix):
+                return f"Cannot use system directory '{prefix}' as backup path"
+
+        # Warn about home directory itself
+        if path == Path.home():
+            return "Cannot use home directory itself as backup path"
+
+        return None
+
     def _prompt_for_backup_path(self) -> str:
         """Prompt user for backup location path on first run"""
         print("\nPlease specify the backup repository path (The directory will be created if it doesn't exist).")
@@ -804,11 +776,17 @@ class Shelf:
 
             expanded_path = Path(backup_path).expanduser().resolve()
 
+            # Validate the path
+            validation_error = self._validate_backup_path(expanded_path)
+            if validation_error:
+                print(f"Error: {validation_error}")
+                continue
+
             # Confirm with user
             print(f"\nBackup repository will be: {expanded_path}")
             confirm = input("Is this correct? (y/n): ").strip().lower()
 
-            if confirm in ('y', 'yes'):
+            if confirm in ("y", "yes"):
                 return str(expanded_path)
             else:
                 print("Let's try again.")
@@ -1049,7 +1027,7 @@ class Shelf:
 
         self.logger.info(f"Starting {'dry-run' if dry_run else 'restore'} from profile: {self.profile_name}")
         if dry_run:
-            print("\nℹ️  DRY RUN MODE, No changes will be made\n")
+            print("\n[DRY-RUN]  DRY RUN MODE, No changes will be made\n")
 
         success = True
         for provider_name, provider in self.providers.items():
@@ -1060,17 +1038,17 @@ class Shelf:
                 provider_backup_path = backup_path / provider_subdirectory if provider_subdirectory else backup_path
 
                 if dry_run:
-                    print(f"ℹ️  Would restore {provider_name}")
+                    print(f"[DRY-RUN]  Would restore {provider_name}")
                 elif not provider.restore(provider_backup_path, provider_config):
                     success = False
 
         if dry_run:
-            print("\nℹ️  Dry-run completed. Run without --dry-run to apply changes.")
+            print("\n[DRY-RUN]  Dry-run completed. Run without --dry-run to apply changes.")
         else:
             self.logger.info("Restore completed successfully" if success else "Restore completed with errors")
         return success
 
-    def list_backups(self, source_path: Optional[str] = None, limit: int = 20):
+    def list_backups(self, source_path: Optional[str] = None, limit: int = DEFAULT_BACKUP_LIST_LIMIT):
         profile = self.load_profile(self.profile_name)
         backup_path = (
             Path(source_path).resolve()
@@ -1084,7 +1062,7 @@ class Shelf:
             self.logger.info(f"No backups found at: {backup_path}")
             return
 
-        logs_dir = backup_path / "logs"
+        logs_dir = backup_path / ".shelf_logs"
         log_files = sorted(logs_dir.glob("backup_*.ndjson"), reverse=True)[:limit] if logs_dir.exists() else []
         if not log_files:
             self.logger.info("No backup history found")
@@ -1162,11 +1140,17 @@ def main():
         print("  rm <name>    Remove a password")
         print()
         print("Options:")
+        print("  --version   Show version number")
         print("  --commit    Create git commit after backup")
         print("  --push      Push changes to remote (requires --commit and configured remote)")
         print("  --dry-run   Show what would be restored without making changes")
         print()
         print("Backup path must be specified explicitly or set in profile config.")
+        return
+
+    # Handle --version flag
+    if sys.argv[1] in ("--version", "-v", "version"):
+        print(f"shelf {__version__}")
         return
 
     shelf = Shelf()
@@ -1234,9 +1218,10 @@ def main():
                         capture_output=True,
                         text=True,
                         check=True,
+                        timeout=DEFAULT_SUBPROCESS_TIMEOUT,
                     )
                     print(result.stdout)
-                except subprocess.CalledProcessError:
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                     print("Error: Could not list GPG keys. Is GPG installed?")
                     sys.exit(1)
 
