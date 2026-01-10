@@ -12,6 +12,7 @@ import logging
 import stat
 import hashlib
 import getpass
+import argparse
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -72,7 +73,7 @@ class JSONFormatter(logging.Formatter):
         super().__init__()
         self.session_id = session_id
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         log_entry = {
             "v": LOG_VERSION,
             "timestamp": datetime.fromtimestamp(record.created).isoformat(),
@@ -96,7 +97,7 @@ class ColoredConsoleHandler(logging.StreamHandler):
         "RESET": "\033[0m",
     }
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             color = self.COLORS.get(record.levelname, "")
             timestamp = datetime.now().strftime(LOG_TIME_FORMAT)
@@ -123,7 +124,7 @@ class Logger:
             file_handler.setFormatter(JSONFormatter(self.session_id))
             self.logger.addHandler(file_handler)
 
-    def log_metadata(self, operation: str, profile: str, **kwargs):
+    def log_metadata(self, operation: str, profile: str, **kwargs) -> None:
         metadata = {
             "v": LOG_VERSION,
             "timestamp": datetime.now().isoformat(),
@@ -140,16 +141,16 @@ class Logger:
                 with open(handler.baseFilename, "a") as f:
                     f.write(json.dumps(metadata) + "\n")
 
-    def info(self, message: str, event_type: str = "general", **kwargs):
+    def info(self, message: str, event_type: str = "general", **kwargs) -> None:
         self.logger.info(message, extra={"event_type": event_type, **kwargs})
 
-    def warn(self, message: str, event_type: str = "warning", **kwargs):
+    def warn(self, message: str, event_type: str = "warning", **kwargs) -> None:
         self.logger.warning(message, extra={"event_type": event_type, **kwargs})
 
-    def error(self, message: str, event_type: str = "error", **kwargs):
+    def error(self, message: str, event_type: str = "error", **kwargs) -> None:
         self.logger.error(message, extra={"event_type": event_type, **kwargs})
 
-    def debug(self, message: str, event_type: str = "debug", **kwargs):
+    def debug(self, message: str, event_type: str = "debug", **kwargs) -> None:
         self.logger.debug(message, extra={"event_type": event_type, **kwargs})
 
 
@@ -182,14 +183,14 @@ class GitManager:
                 self.logger.error(f"Git error: {e.stderr.strip()}")
             raise
 
-    def init(self):
+    def init(self) -> None:
         if (self.repo_path / ".git").exists():
             return
         self.repo_path.mkdir(parents=True, exist_ok=True)
         self.run_git(["init"])
         self.logger.debug(f"Initialized git repo: {self.repo_path}")
 
-    def add_all(self):
+    def add_all(self) -> None:
         self.run_git(["add", "."])
 
     def commit(self, message: str) -> bool:
@@ -199,7 +200,7 @@ class GitManager:
         except subprocess.CalledProcessError:
             return False
 
-    def checkout(self, commit_hash: str):
+    def checkout(self, commit_hash: str) -> None:
         self.run_git(["checkout", commit_hash])
 
     def log(self, limit: int = 10) -> str:
@@ -279,8 +280,8 @@ class FileManager:
             self.logger.error(f"Failed to copy {src} → {dest}: {e}")
             return False
 
-    def _copy_directory_safe(self, src: Path, dest: Path):
-        def ignore_problematic_files(src_dir, names):
+    def _copy_directory_safe(self, src: Path, dest: Path) -> None:
+        def ignore_problematic_files(src_dir: str, names: List[str]) -> List[str]:
             ignored = []
             for name in names:
                 full_path = Path(src_dir) / name
@@ -875,7 +876,7 @@ class Shelf:
 
         return profile
 
-    def save_profile(self, profile: Dict[str, Any]):
+    def save_profile(self, profile: Dict[str, Any]) -> None:
         profile_path = self.config_dir / f"{profile['name']}.toml"
         toml_content = self._dict_to_toml(profile)
         profile_path.write_text(toml_content)
@@ -1048,7 +1049,7 @@ class Shelf:
             self.logger.info("Restore completed successfully" if success else "Restore completed with errors")
         return success
 
-    def list_backups(self, source_path: Optional[str] = None, limit: int = DEFAULT_BACKUP_LIST_LIMIT):
+    def list_backups(self, source_path: Optional[str] = None, limit: int = DEFAULT_BACKUP_LIST_LIMIT) -> None:
         profile = self.load_profile(self.profile_name)
         backup_path = (
             Path(source_path).resolve()
@@ -1083,7 +1084,7 @@ class Shelf:
             except Exception as e:
                 self.logger.debug(f"Failed to read {log_file}: {e}")
 
-    def status(self):
+    def status(self) -> None:
         """Show status information"""
         self.logger.info("Shelf Backup Status")
         print("=" * 50)
@@ -1124,212 +1125,195 @@ class Shelf:
             print("Run any shelf command to initialize configuration")
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print("  shelf backup <path> [--commit] [--push]  # Backup to path")
-        print("  shelf restore [commit] [path] [--dry-run] # Restore from path")
-        print("  shelf list [path]                        # List backups at path")
-        print("  shelf status                             # Show system status")
-        print("  shelf pass <action> [name]               # Manage passwords")
-        print()
-        print("Password actions:")
-        print("  list         List all stored passwords")
-        print("  add <name>   Add or update a password")
-        print("  show <name>  Show a password")
-        print("  rm <name>    Remove a password")
-        print()
-        print("Options:")
-        print("  --version   Show version number")
-        print("  --commit    Create git commit after backup")
-        print("  --push      Push changes to remote (requires --commit and configured remote)")
-        print("  --dry-run   Show what would be restored without making changes")
-        print()
-        print("Backup path must be specified explicitly or set in profile config.")
-        return
+def _setup_password_provider(shelf_instance: Shelf) -> tuple:
+    """Setup and return password provider configuration"""
+    profile = shelf_instance.load_profile(shelf_instance.profile_name)
+    pass_config = profile.get("providers", {}).get("passwords", {})
 
-    # Handle --version flag
-    if sys.argv[1] in ("--version", "-v", "version"):
-        print(f"shelf {__version__}")
-        return
-
-    shelf = Shelf()
-    command = sys.argv[1].lower()
-
-    try:
-        if command == "backup":
-            path = None
-            should_commit = False
-            should_push = False
-
-            for arg in sys.argv[2:]:
-                if arg == "--commit":
-                    should_commit = True
-                elif arg == "--push":
-                    should_push = True
-                elif not arg.startswith("--"):
-                    path = arg
-
-            shelf.backup(path, should_commit=should_commit, should_push=should_push)
-
-        elif command == "restore":
-            commit = None
-            path = None
-            dry_run = False
-
-            for arg in sys.argv[2:]:
-                if arg == "--dry-run":
-                    dry_run = True
-                elif not arg.startswith("--"):
-                    # Check if arg looks like commit hash
-                    if len(arg) >= 8 and arg.replace("_", "").replace("-", "").isalnum() and not Path(arg).exists():
-                        commit = arg
-                    else:
-                        path = arg
-
-            shelf.restore(commit, path, dry_run=dry_run)
-
-        elif command == "list":
-            path = sys.argv[2] if len(sys.argv) > 2 else None
-            shelf.list_backups(path)
-
-        elif command == "status":
-            shelf.status()
-
-        elif command == "pass":
-            if len(sys.argv) < 3:
-                print("Usage: shelf pass <action> [name]")
-                print("Actions: list, add, show, rm, rename")
-                sys.exit(1)
-
-            action = sys.argv[2].lower()
-            profile = shelf.load_profile(shelf.profile_name)
-
-            # Get password provider configuration
-            pass_config = profile.get("providers", {}).get("passwords", {})
-
-            # Auto-enable and configure if not set
-            if not pass_config.get("enabled", False) or not pass_config.get("gpg_key_id"):
-                print("\nPassword provider not configured.")
-                print("Available GPG keys:")
-                try:
-                    result = subprocess.run(
-                        ["gpg", "--list-keys", "--keyid-format", "LONG"],
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                        timeout=DEFAULT_SUBPROCESS_TIMEOUT,
-                    )
-                    print(result.stdout)
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                    print("Error: Could not list GPG keys. Is GPG installed?")
-                    sys.exit(1)
-
-                gpg_key_id = input("\nEnter GPG key ID to use for password encryption: ").strip()
-                if not gpg_key_id:
-                    print("Error: GPG key ID cannot be empty")
-                    sys.exit(1)
-
-                # Update config
-                if "providers" not in profile:
-                    profile["providers"] = {}
-                if "passwords" not in profile["providers"]:
-                    profile["providers"]["passwords"] = {}
-
-                profile["providers"]["passwords"]["enabled"] = True
-                profile["providers"]["passwords"]["gpg_key_id"] = gpg_key_id
-                if "subdirectory" not in profile["providers"]["passwords"]:
-                    profile["providers"]["passwords"]["subdirectory"] = "passwords"
-
-                # Save updated config
-                shelf.save_profile(profile)
-                print(f"Password provider enabled with GPG key: {gpg_key_id}")
-                pass_config = profile["providers"]["passwords"]
-
-            gpg_key_id = pass_config.get("gpg_key_id")
-
-            backup_path_str = profile.get("backup", {}).get("path")
-            if not backup_path_str:
-                print("Error: Backup path not configured. Run 'shelf backup <path>' first.")
-                sys.exit(1)
-
-            backup_path = Path(backup_path_str).expanduser().resolve()
-            subdirectory = pass_config.get("subdirectory", "passwords")
-            store_path = backup_path / subdirectory
-            store_path.mkdir(parents=True, exist_ok=True)
-
-            pass_provider = PasswordsProvider(shelf.logger, shelf.file_manager)
-
-            if action == "list":
-                passwords = pass_provider.list_passwords(store_path)
-                if passwords:
-                    print("Stored passwords:")
-                    for name in passwords:
-                        print(f"  {name}")
-                else:
-                    print("No passwords stored")
-
-            elif action == "add":
-                if len(sys.argv) < 4:
-                    print("Usage: shelf pass add <name>")
-                    sys.exit(1)
-                name = sys.argv[3]
-                password = getpass.getpass("Enter password: ")
-                if not password:
-                    print("Password cannot be empty")
-                    sys.exit(1)
-                confirm = getpass.getpass("Confirm password: ")
-                if password != confirm:
-                    print("Passwords do not match")
-                    sys.exit(1)
-                if pass_provider.add(store_path, gpg_key_id, name, password):
-                    print(f"Password stored: {name}")
-                else:
-                    print("Failed to store password")
-                    sys.exit(1)
-
-            elif action == "show":
-                if len(sys.argv) < 4:
-                    print("Usage: shelf pass show <name>")
-                    sys.exit(1)
-                name = sys.argv[3]
-                password = pass_provider.show(store_path, name)
-                if password:
-                    print(password)
-                else:
-                    sys.exit(1)
-
-            elif action == "rm":
-                if len(sys.argv) < 4:
-                    print("Usage: shelf pass rm <name>")
-                    sys.exit(1)
-                name = sys.argv[3]
-                if pass_provider.remove(store_path, name):
-                    print(f"Password removed: {name}")
-                else:
-                    sys.exit(1)
-
-            elif action == "rename":
-                if len(sys.argv) < 5:
-                    print("Usage: shelf pass rename <old_name> <new_name>")
-                    sys.exit(1)
-                old_name = sys.argv[3]
-                new_name = sys.argv[4]
-                if pass_provider.rename(store_path, old_name, new_name):
-                    print(f"Password renamed: {old_name} -> {new_name}")
-                else:
-                    sys.exit(1)
-
-            else:
-                print(f"Unknown action: {action}")
-                print("Available actions: list, add, show, rm, rename")
-                sys.exit(1)
-
-        else:
-            print(f"Unknown command: {command}")
-            print("Use 'shelf' with no arguments to see usage.")
+    if not pass_config.get("enabled", False) or not pass_config.get("gpg_key_id"):
+        print("\nPassword provider not configured.")
+        print("Available GPG keys:")
+        try:
+            result = subprocess.run(
+                ["gpg", "--list-keys", "--keyid-format", "LONG"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=DEFAULT_SUBPROCESS_TIMEOUT,
+            )
+            print(result.stdout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            print("Error: Could not list GPG keys. Is GPG installed?")
             sys.exit(1)
 
+        gpg_key_id = input("\nEnter GPG key ID to use for password encryption: ").strip()
+        if not gpg_key_id:
+            print("Error: GPG key ID cannot be empty")
+            sys.exit(1)
+
+        if "providers" not in profile:
+            profile["providers"] = {}
+        if "passwords" not in profile["providers"]:
+            profile["providers"]["passwords"] = {}
+
+        profile["providers"]["passwords"]["enabled"] = True
+        profile["providers"]["passwords"]["gpg_key_id"] = gpg_key_id
+        if "subdirectory" not in profile["providers"]["passwords"]:
+            profile["providers"]["passwords"]["subdirectory"] = "passwords"
+
+        shelf_instance.save_profile(profile)
+        print(f"Password provider enabled with GPG key: {gpg_key_id}")
+        pass_config = profile["providers"]["passwords"]
+
+    gpg_key_id = pass_config.get("gpg_key_id")
+
+    backup_path_str = profile.get("backup", {}).get("path")
+    if not backup_path_str:
+        print("Error: Backup path not configured. Run 'shelf backup <path>' first.")
+        sys.exit(1)
+
+    backup_path = Path(backup_path_str).expanduser().resolve()
+    subdirectory = pass_config.get("subdirectory", "passwords")
+    store_path = backup_path / subdirectory
+    store_path.mkdir(parents=True, exist_ok=True)
+
+    pass_provider = PasswordsProvider(shelf_instance.logger, shelf_instance.file_manager)
+    return pass_provider, store_path, gpg_key_id
+
+
+def _cmd_backup(args) -> None:
+    """Handle backup command"""
+    shelf = Shelf()
+    shelf.backup(args.path, should_commit=args.commit, should_push=args.push)
+
+
+def _cmd_restore(args) -> None:
+    """Handle restore command"""
+    shelf = Shelf()
+    shelf.restore(args.commit, args.path, dry_run=args.dry_run)
+
+
+def _cmd_list(args) -> None:
+    """Handle list command"""
+    shelf = Shelf()
+    shelf.list_backups(args.path)
+
+
+def _cmd_status(args) -> None:
+    """Handle status command"""
+    shelf = Shelf()
+    shelf.status()
+
+
+def _cmd_pass(args) -> None:
+    """Handle pass command"""
+    shelf = Shelf()
+    pass_provider, store_path, gpg_key_id = _setup_password_provider(shelf)
+
+    if args.action == "list":
+        passwords = pass_provider.list_passwords(store_path)
+        if passwords:
+            print("Stored passwords:")
+            for name in passwords:
+                print(f"  {name}")
+        else:
+            print("No passwords stored")
+
+    elif args.action == "add":
+        if not args.name:
+            print("Error: name is required for 'add' action")
+            sys.exit(1)
+        password = getpass.getpass("Enter password: ")
+        if not password:
+            print("Password cannot be empty")
+            sys.exit(1)
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("Passwords do not match")
+            sys.exit(1)
+        if pass_provider.add(store_path, gpg_key_id, args.name, password):
+            print(f"Password stored: {args.name}")
+        else:
+            print("Failed to store password")
+            sys.exit(1)
+
+    elif args.action == "show":
+        if not args.name:
+            print("Error: name is required for 'show' action")
+            sys.exit(1)
+        password = pass_provider.show(store_path, args.name)
+        if password:
+            print(password)
+        else:
+            sys.exit(1)
+
+    elif args.action == "rm":
+        if not args.name:
+            print("Error: name is required for 'rm' action")
+            sys.exit(1)
+        if pass_provider.remove(store_path, args.name):
+            print(f"Password removed: {args.name}")
+        else:
+            sys.exit(1)
+
+    elif args.action == "rename":
+        if not args.name or not args.new_name:
+            print("Error: both old_name and new_name are required for 'rename' action")
+            sys.exit(1)
+        if pass_provider.rename(store_path, args.name, args.new_name):
+            print(f"Password renamed: {args.name} -> {args.new_name}")
+        else:
+            sys.exit(1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="shelf",
+        description="A stupidly simple backup tool with zero dependencies",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("-v", "--version", action="version", version=f"shelf {__version__}")
+
+    subparsers = parser.add_subparsers(dest="command", title="commands")
+
+    # backup command
+    backup_parser = subparsers.add_parser("backup", help="Backup files to repository")
+    backup_parser.add_argument("path", nargs="?", help="Backup repository path")
+    backup_parser.add_argument("--commit", action="store_true", help="Create git commit after backup")
+    backup_parser.add_argument("--push", action="store_true", help="Push changes to remote (requires --commit)")
+    backup_parser.set_defaults(func=_cmd_backup)
+
+    # restore command
+    restore_parser = subparsers.add_parser("restore", help="Restore files from backup")
+    restore_parser.add_argument("commit", nargs="?", help="Git commit hash to restore from")
+    restore_parser.add_argument("path", nargs="?", help="Backup repository path")
+    restore_parser.add_argument("--dry-run", action="store_true", help="Show what would be restored without making changes")
+    restore_parser.set_defaults(func=_cmd_restore)
+
+    # list command
+    list_parser = subparsers.add_parser("list", help="List backup history")
+    list_parser.add_argument("path", nargs="?", help="Backup repository path")
+    list_parser.set_defaults(func=_cmd_list)
+
+    # status command
+    status_parser = subparsers.add_parser("status", help="Show system status")
+    status_parser.set_defaults(func=_cmd_status)
+
+    # pass command
+    pass_parser = subparsers.add_parser("pass", help="Manage GPG-encrypted passwords")
+    pass_parser.add_argument("action", choices=["list", "add", "show", "rm", "rename"], help="Password action")
+    pass_parser.add_argument("name", nargs="?", help="Password name")
+    pass_parser.add_argument("new_name", nargs="?", help="New name (for rename)")
+    pass_parser.set_defaults(func=_cmd_pass)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return
+
+    try:
+        args.func(args)
     except KeyboardInterrupt:
         print("\nInterrupted by user")
         sys.exit(1)
