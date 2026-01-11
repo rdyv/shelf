@@ -223,6 +223,21 @@ class TestSystemUtils(unittest.TestCase):
         with patch("shutil.which", return_value=None):
             self.assertFalse(shelf.SystemUtils.which("nonexistent"))
 
+    def test_path_to_relative_unix(self):
+        # Unix absolute path
+        result = shelf.SystemUtils.path_to_relative(Path("/etc/hosts"))
+        self.assertEqual(str(result), "etc/hosts")
+
+    def test_path_to_relative_windows(self):
+        # Windows absolute path
+        result = shelf.SystemUtils.path_to_relative(Path("C:/Users/test"))
+        self.assertEqual(str(result), "Users/test")
+
+    def test_path_to_relative_already_relative(self):
+        # Already relative path
+        result = shelf.SystemUtils.path_to_relative(Path("some/path"))
+        self.assertEqual(str(result), "some/path")
+
 
 class TestShelfValidateBackupPath(unittest.TestCase):
     """Tests for Shelf._validate_backup_path() validation."""

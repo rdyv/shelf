@@ -1,0 +1,103 @@
+# Shelf Configuration - Windows
+# ============================================================================
+# Backup Settings
+# ============================================================================
+[backup]
+# Where backups are stored (will be set on first backup if not specified)
+path = ""
+
+# Global ignore patterns (merged with provider-specific patterns)
+ignore_patterns = [
+    "*.log",
+    "*.mdb",
+    "*.db",
+    "*.tmp",
+    "node_modules/",
+    "target/",
+    "dist/",
+    "build/",
+    "*.exe",
+    "*.dll",
+    "*.pdb",
+    "Thumbs.db",
+    "desktop.ini",
+]
+
+# ============================================================================
+# Git Settings
+# ============================================================================
+[git]
+# Enable git versioning
+enabled = true
+
+# Commit message template (supports: {timestamp}, {date}, {time})
+# Use --commit flag to create commits, --push to push to remote
+commit_message = "Backup: {timestamp}"
+
+# Branch to use
+branch = "main"
+
+# ============================================================================
+# Provider: Files & Directories
+# ============================================================================
+[providers.files]
+enabled = true
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/windows"
+
+# Paths to backup (files and directories - auto-detected)
+# Note: Use forward slashes or escaped backslashes in paths
+paths = [
+    "~/.gitconfig",
+    "~/.npmrc",
+    "~/.yarnrc",
+    "~/.ssh/config",
+    "~/.ssh/known_hosts",
+    "~/AppData/Local/nvim",
+    "~/AppData/Roaming/Code/User/settings.json",
+    "~/AppData/Roaming/Code/User/keybindings.json",
+    "~/AppData/Roaming/alacritty",
+    "~/AppData/Roaming/ghostty",
+    "~/.gnupg",
+    "~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+    "~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1",
+]
+
+# Recursive backups: scan parent directories for specific subdirectories
+# [providers.files.recursive]
+# "~/Developer/github" = ["_scripts", ".github", "config"]
+
+# ============================================================================
+# Provider: Homebrew (NOT available on Windows)
+# ============================================================================
+[providers.homebrew]
+enabled = false
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/windows"
+
+# ============================================================================
+# Provider: Fonts
+# ============================================================================
+[providers.fonts]
+enabled = false
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "backup/windows"
+
+# Note: Windows fonts are in system directories and typically not user-managed
+# Custom fonts can be in %LOCALAPPDATA%\Microsoft\Windows\Fonts
+
+# ============================================================================
+# Provider: Passwords (GPG-encrypted)
+# ============================================================================
+[providers.passwords]
+enabled = false
+
+# Subdirectory within backup path for this provider's files
+subdirectory = "passwords"
+
+# GPG key ID for password encryption (required for 'shelf pass' commands)
+# Get your key ID with: gpg --list-keys
+gpg_key_id = ""

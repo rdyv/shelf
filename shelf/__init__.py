@@ -247,7 +247,14 @@ class FileManager:
         try:
             with open(file_path, "rb") as f:
                 return hashlib.sha256(f.read()).hexdigest()
-        except Exception:
+        except PermissionError:
+            self.logger.debug(f"Permission denied reading file for checksum: {file_path}")
+            return None
+        except MemoryError:
+            self.logger.warn(f"File too large to compute checksum: {file_path}")
+            return None
+        except OSError as e:
+            self.logger.debug(f"Cannot compute checksum for {file_path}: {e}")
             return None
 
     def files_differ(self, file1: Path, file2: Path) -> bool:
@@ -263,7 +270,7 @@ class FileManager:
 
             if src.is_file():
                 shutil.copy2(src, dest)
-                self.logger.debug(f"Copied file: {src} → {dest}")
+                self.logger.debug(f"Copied file: {src} -> {dest}")
             elif src.is_dir():
                 if dest.exists():
                     shutil.rmtree(dest)
@@ -271,13 +278,13 @@ class FileManager:
                 if not dest.exists():
                     self.logger.warn(f"Failed to create directory: {dest}")
                     return False
-                self.logger.debug(f"Copied directory: {src} → {dest}")
+                self.logger.debug(f"Copied directory: {src} -> {dest}")
             else:
                 self.logger.warn(f"Source not found: {src}")
                 return False
             return True
         except Exception as e:
-            self.logger.error(f"Failed to copy {src} → {dest}: {e}")
+            self.logger.error(f"Failed to copy {src} -> {dest}: {e}")
             return False
 
     def _copy_directory_safe(self, src: Path, dest: Path) -> None:
@@ -308,9 +315,21 @@ class FileManager:
 
         try:
             shutil.copytree(src, dest, symlinks=True, ignore=ignore_problematic_files)
-        except Exception as e:
-            self.logger.debug(f"Some files in {src} could not be copied: {type(e).__name__}")
-            dest.mkdir(parents=True, exist_ok=True)
+        except shutil.Error as e:
+            # shutil.Error contains list of (src, dst, error) tuples for partial failures
+            self.logger.warn(f"Some files in {src} could not be copied")
+            for src_file, dst_file, error in e.args[0]:
+                self.logger.debug(f"  Failed: {src_file} -> {error}")
+        except PermissionError as e:
+            self.logger.error(f"Permission denied copying {src}: {e}")
+            if dest.exists():
+                shutil.rmtree(dest, ignore_errors=True)
+            raise
+        except OSError as e:
+            self.logger.error(f"Error copying directory {src}: {e}")
+            if dest.exists():
+                shutil.rmtree(dest, ignore_errors=True)
+            raise
 
     def should_exclude(self, path_str: str, exclude_patterns: List[str]) -> bool:
         return any(fnmatch.fnmatch(path_str, p) or fnmatch.fnmatch(Path(path_str).name, p) for p in exclude_patterns)
@@ -346,6 +365,24 @@ class SystemUtils:
     @staticmethod
     def which(command: str) -> bool:
         return shutil.which(command) is not None
+
+    @staticmethod
+    def path_to_relative(path: Path) -> Path:
+        """Convert absolute path to relative path in cross-platform way.
+
+        On Unix: /etc/hosts -> etc/hosts
+        On Windows: C:\\Users\\name -> Users/name
+        """
+        path_str = str(path)
+        # Handle Unix paths
+        if path_str.startswith("/"):
+            return Path(path_str[1:])
+        # Handle Windows paths (e.g., C:\Users\...)
+        if len(path_str) > 2 and path_str[1] == ":":
+            # Remove drive letter and colon, then any leading slash/backslash
+            remainder = path_str[2:].lstrip("/\\")
+            return Path(remainder)
+        return path
 
     @staticmethod
     def run_command(cmd: List[str], cwd: Optional[Path] = None, timeout: int = DEFAULT_SUBPROCESS_TIMEOUT) -> subprocess.CompletedProcess:
@@ -397,7 +434,7 @@ class FilesProvider(BackupProvider):
                 dest_path = backup_path / relative_path
             except ValueError:
                 # If path is not relative to home (e.g., /etc/hosts), use full absolute path
-                dest_path = backup_path / str(src_path).lstrip("/")
+                dest_path = backup_path / SystemUtils.path_to_relative(src_path)
 
             if self.file_manager.copy_item(src_path, dest_path):
                 if src_path.is_file():
@@ -457,7 +494,7 @@ class FilesProvider(BackupProvider):
                 src_path = backup_path / relative_path
             except ValueError:
                 # If path is not relative to home, use full absolute path
-                src_path = backup_path / str(dest_path).lstrip("/")
+                src_path = backup_path / SystemUtils.path_to_relative(dest_path)
 
             if src_path.exists() and self.file_manager.copy_item(src_path, dest_path):
                 item_type = "file" if src_path.is_file() else "directory"
@@ -614,10 +651,20 @@ class PasswordsProvider(BackupProvider):
                     self.logger.error("Use a different name or remove the existing entry first")
                     return False
 
-            self._run_gpg(
-                ["-e", "-r", gpg_key_id, "-o", str(password_file), "--batch", "--yes"],
-                input_data=password,
-            )
+            # Set restrictive umask for GPG file creation (owner read/write only)
+            old_umask = os.umask(0o077)
+            try:
+                self._run_gpg(
+                    ["-e", "-r", gpg_key_id, "-o", str(password_file), "--batch", "--yes"],
+                    input_data=password,
+                )
+            finally:
+                os.umask(old_umask)
+
+            # Ensure file has restrictive permissions (600)
+            if password_file.exists():
+                password_file.chmod(0o600)
+
             if safe_name != name:
                 self.logger.info(f"Password stored: {name} (as {safe_name})")
             else:
@@ -1029,6 +1076,18 @@ class Shelf:
         self.logger.info(f"Starting {'dry-run' if dry_run else 'restore'} from profile: {self.profile_name}")
         if dry_run:
             print("\n[DRY-RUN]  DRY RUN MODE, No changes will be made\n")
+        else:
+            # Confirm destructive restore operation
+            print(f"\nThis will restore files from: {backup_path}")
+            print("WARNING: Existing files will be overwritten.")
+            try:
+                confirm = input("Continue with restore? (y/n): ").strip().lower()
+                if confirm not in ("y", "yes"):
+                    self.logger.info("Restore cancelled by user")
+                    return True
+            except (KeyboardInterrupt, EOFError):
+                print("\nRestore cancelled")
+                return True
 
         success = True
         for provider_name, provider in self.providers.items():
@@ -1127,6 +1186,19 @@ class Shelf:
 
 def _setup_password_provider(shelf_instance: Shelf) -> tuple:
     """Setup and return password provider configuration"""
+    # Check if GPG is installed
+    if not SystemUtils.which("gpg"):
+        print("Error: GPG is not installed or not in PATH.")
+        print("Install GPG to use the password provider:")
+        if SystemUtils.get_platform() == "macos":
+            print("  brew install gnupg")
+        elif SystemUtils.get_platform() == "linux":
+            print("  sudo apt install gnupg  # Debian/Ubuntu")
+            print("  sudo dnf install gnupg  # Fedora")
+        else:
+            print("  Download from: https://gnupg.org/download/")
+        sys.exit(1)
+
     profile = shelf_instance.load_profile(shelf_instance.profile_name)
     pass_config = profile.get("providers", {}).get("passwords", {})
 
@@ -1141,14 +1213,31 @@ def _setup_password_provider(shelf_instance: Shelf) -> tuple:
                 check=True,
                 timeout=DEFAULT_SUBPROCESS_TIMEOUT,
             )
-            print(result.stdout)
+            if result.stdout.strip():
+                print(result.stdout)
+            else:
+                print("No GPG keys found. Create one with: gpg --gen-key")
+                sys.exit(1)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            print("Error: Could not list GPG keys. Is GPG installed?")
+            print("Error: Could not list GPG keys.")
             sys.exit(1)
 
         gpg_key_id = input("\nEnter GPG key ID to use for password encryption: ").strip()
         if not gpg_key_id:
             print("Error: GPG key ID cannot be empty")
+            sys.exit(1)
+
+        # Verify the key exists
+        try:
+            subprocess.run(
+                ["gpg", "--list-keys", gpg_key_id],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=DEFAULT_SUBPROCESS_TIMEOUT,
+            )
+        except subprocess.CalledProcessError:
+            print(f"Error: GPG key '{gpg_key_id}' not found")
             sys.exit(1)
 
         if "providers" not in profile:
